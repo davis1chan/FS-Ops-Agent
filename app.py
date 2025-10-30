@@ -1,17 +1,35 @@
-import os, json, time, requests
+import os, json, time, requests, hmac, base64
 from flask import Flask, request, jsonify, abort
 
 app = Flask(__name__)
 
-# ✅ Read from ENV VAR NAMES (no literals)
-SHOP_BASE_URL = os.getenv("SHOP_BASE_URL")          # e.g. https://<your>.myshopify.com
-ADMIN_TOKEN   = os.getenv("SHOP_ADMIN_TOKEN")       # Shopify Admin API token (private app/custom app)
-INTERNAL_KEY  = os.getenv("FS_INTERNAL_API_KEY")    # your shared secret for this service
+SHOP_BASE_URL = os.getenv("SHOP_BASE_URL")
+ADMIN_TOKEN   = os.getenv("SHOP_ADMIN_TOKEN")
 
 def require_api_key(req):
-    # ✅ Fail closed: require key to be configured and present
-    header_key = req.headers.get("x-api-key")
-    if not INTERNAL_KEY or header_key != INTERNAL_KEY:
+    expected = os.getenv("FS_INTERNAL_API_KEY", "")
+    if not expected:
+        abort(500, description="Server missing internal API key")
+
+    header_key = req.headers.get("x-api-key", "")
+    auth_hdr   = req.headers.get("Authorization", "") or ""
+
+    ok_api = hmac.compare_digest(header_key, expected)
+
+    ok_bearer = auth_hdr.startswith("Bearer ") and hmac.compare_digest(
+        auth_hdr.split(" ", 1)[1], expected
+    )
+
+    ok_basic = False
+    if auth_hdr.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth_hdr.split(" ", 1)[1]).decode("utf-8")
+            user, pwd = decoded.split(":", 1) if ":" in decoded else ("", "")
+            ok_basic = hmac.compare_digest(pwd, expected)
+        except Exception:
+            pass
+
+    if not (ok_api or ok_bearer or ok_basic):
         abort(401, description="Unauthorized")
 
 def shopify_graphql(query, variables=None, max_retries=3):
@@ -37,7 +55,6 @@ def shopify_graphql(query, variables=None, max_retries=3):
 
         data = resp.json()
         if "errors" in data:
-            # Bubble upstream GraphQL errors in a controlled way
             abort(502, description=json.dumps(data["errors"]))
         return data.get("data")
 
