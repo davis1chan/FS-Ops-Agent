@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: FS Ops Agent
+  version: "1.0"
+  description: >
+    Minimal Shopify proxy for GraphQL via Render-hosted Flask app.
+    POST /query accepts { query, variables? }. GET /health returns { ok: true }.
+
+servers:
+  - url: https://fs-ops-agent.onrender.com
+    description: Render production
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /query:
+    post:
+      summary: Proxy a GraphQL query to Shopify
+      operationId: shopifyQuery
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                variables:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  code:
+                    type: integer
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  code:
+                    type: integer
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+  schemas: {}
